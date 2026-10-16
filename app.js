@@ -3,7 +3,7 @@
   'use strict';
   var PT = window.PT, U = PT.util, S = PT.store;
   var t = function (k, v) { return PT.t(k, v); };
-  var VERSION = '1.0.0';
+  var VERSION = '1.1.0';
   var CFG = window.PT_CONFIG || {};
   var THEMES = window.PT_THEMES, THEME_ORDER = window.PT_THEME_ORDER;
   var ACCENTS = window.PT_ACCENTS, LIST_COLORS = window.PT_LIST_COLORS;
@@ -57,18 +57,18 @@
   };
   function icon(name, cls) { return '<svg class="ic' + (cls ? ' ' + cls : '') + '" viewBox="0 0 24 24" aria-hidden="true">' + I[name] + '</svg>'; }
   var GRIP = '<span class="grip" aria-hidden="true">' + icon('grip') + '</span>';
-  var CHECK_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="6.5,12.5 10.5,16.5 17.5,8.5" pathLength="1"/></svg>';
+  var CHECK_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="6.5,12.5 10.5,16.5 17.5,8.5"/></svg>';
 
   function logoSVG(cls) {
     return '<svg class="mark ' + (cls || '') + '" viewBox="0 0 100 100" aria-hidden="true">' +
-      '<circle class="mark-ring" cx="50" cy="50" r="30" pathLength="100" transform="rotate(-10.5 50 50)"/>' +
-      '<polyline class="mark-check" points="35,51 46,62 80,24" pathLength="1"/></svg>';
+      '<circle class="mark-ring" cx="50" cy="50" r="30" transform="rotate(-10.5 50 50)"/>' +
+      '<polyline class="mark-check" points="35,51 46,62 80,24"/></svg>';
   }
   function ringSVG() {
     return '<svg class="pring" viewBox="0 0 100 100" aria-hidden="true">' +
       '<circle class="pr-track" cx="50" cy="50" r="30"/>' +
-      '<circle class="pr-fill" cx="50" cy="50" r="30" pathLength="100"/>' +
-      '<polyline class="pr-check" points="35,51 46,62 80,24" pathLength="1"/></svg>';
+      '<circle class="pr-fill" cx="50" cy="50" r="30"/>' +
+      '<polyline class="pr-check" points="35,51 46,62 80,24"/></svg>';
   }
 
   /* Dates */
@@ -260,7 +260,8 @@
     var complete = total > 0 && done >= total;
     wrap.classList.toggle('complete', complete);
     wrap.classList.toggle('zero', done === 0);
-    fill.style.strokeDashoffset = complete ? 15.56 : 100 - (total ? (done / total) * 100 : 0);
+    // real lengths, because Safari ignores pathLength: circumference 188.5, logo arc 159.17
+    fill.style.strokeDashoffset = complete ? 29.33 : 188.5 * (1 - (total ? done / total : 0));
     count.textContent = total && !complete ? done + '/' + total : '';
     wrap.setAttribute('aria-label', t('today.progress', { done: done, total: total }));
   }
@@ -473,19 +474,23 @@
       var s = S.settings;
       var resolved = window.PT_resolveTheme(s.theme || 'auto');
       R('themes', v).innerHTML = THEME_ORDER.map(function (k) {
-        var prev;
+        var sel = (s.theme || 'auto') === k;
+        var inner, style;
         if (k === 'auto') {
           var a = THEMES.light, b = THEMES.dark;
-          prev = '<span class="tp split">' +
-            '<span class="tp-half" style="--tb:' + a.bg + ';--ts:' + a.surface2 + ';--ta:' + a.accent + '"><i class="tp-bar"></i><i class="tp-dot"></i></span>' +
-            '<span class="tp-half" style="--tb:' + b.bg + ';--ts:' + b.surface2 + ';--ta:' + b.accent + '"><i class="tp-bar"></i><i class="tp-dot"></i></span></span>';
+          style = '--tb:' + a.bg;
+          inner = '<i class="tp-half" style="--tb:' + a.bg + ';--ts:' + a.surface2 + ';--ta:' + a.accent + '"><i class="tp-dot"></i><i class="tp-bar"></i></i>' +
+            '<i class="tp-half right" style="--tb:' + b.bg + ';--ts:' + b.surface2 + ';--ta:' + b.accent + '"><i class="tp-dot"></i><i class="tp-bar"></i></i>';
         } else {
           var th = THEMES[k];
-          prev = '<span class="tp" style="--tb:' + th.bg + ';--ts:' + th.surface2 + ';--ta:' + th.accent + ';--tl:' + th.line + '">' +
-            '<i class="tp-dot"></i><i class="tp-bar"></i><i class="tp-bar short"></i></span>';
+          style = '--tb:' + th.bg + ';--ts:' + th.surface2 + ';--ta:' + th.accent;
+          inner = '<i class="tp-dot"></i><i class="tp-bar"></i><i class="tp-bar short"></i>';
         }
-        return '<button type="button" class="theme-tile' + ((s.theme || 'auto') === k ? ' sel' : '') + '" data-act="theme" data-v="' + k + '" aria-pressed="' + ((s.theme || 'auto') === k) + '">' +
-          prev + '<span class="tn">' + esc(t('theme.' + k)) + '</span></button>';
+        // The preview itself is the button, with an explicit size: iOS Safari collapses
+        // empty blocks laid out inside a flex button to zero width.
+        return '<div class="theme-tile' + (sel ? ' sel' : '') + '" data-act="theme" data-v="' + k + '">' +
+          '<button type="button" class="tp' + (k === 'auto' ? ' split' : '') + '" style="' + style + '" aria-pressed="' + sel + '" aria-label="' + esc(t('theme.' + k)) + '">' + inner + '</button>' +
+          '<span class="tn" aria-hidden="true">' + esc(t('theme.' + k)) + '</span></div>';
       }).join('');
 
       var themeAccent = THEMES[resolved].accent;
@@ -1658,7 +1663,7 @@
       console.error(e);
       showFatal(errMsg(e));
     }
-    setTimeout(hideSplash, Math.max(0, 1150 - (performance.now() - t0)));
+    setTimeout(hideSplash, Math.max(0, 1400 - (performance.now() - t0)));
   }
 
   PT.app = { UI: UI, go: go };
