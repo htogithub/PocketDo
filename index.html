@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <title>PocketDo</title>
   <meta name="description" content="A minimalist to-do list and daily habit tracker that syncs between your phone and your computer.">
   <meta name="theme-color" content="#FFFFFF">
@@ -22,14 +22,25 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wdth,wght@75..100,400..700&display=swap">
-  <link rel="stylesheet" href="style.css?v=1.1.0">
+  <link rel="stylesheet" href="style.css?v=1.1.1">
 
-  <script src="themes.js?v=1.1.0"></script>
+  <script src="themes.js?v=1.1.1"></script>
   <script>
     (function () {
       var ui = {};
       try { ui = JSON.parse(localStorage.getItem('pt-ui') || '{}') || {}; } catch (e) { ui = {}; }
       window.PT_applyTheme(ui.theme || 'auto', ui.accent || null);
+
+      // Behave like a native app: no pinch zoom, no double-tap zoom, no ctrl/trackpad zoom.
+      // (iOS ignores user-scalable=no in some cases, so the gestures are blocked here too.)
+      var stop = function (e) { e.preventDefault(); };
+      ['gesturestart', 'gesturechange', 'gestureend'].forEach(function (t) {
+        document.addEventListener(t, stop, { passive: false });
+      });
+      document.addEventListener('touchmove', function (e) {
+        if ((e.touches && e.touches.length > 1) || (e.scale !== undefined && e.scale !== 1)) e.preventDefault();
+      }, { passive: false });
+      document.addEventListener('wheel', function (e) { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
     })();
   </script>
 </head>
@@ -46,9 +57,9 @@
   <div id="toasts" aria-live="polite"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.78.0"></script>
-  <script src="config.js?v=1.1.0"></script>
-  <script src="i18n.js?v=1.1.0"></script>
-  <script src="store.js?v=1.1.0"></script>
-  <script src="app.js?v=1.1.0"></script>
+  <script src="config.js?v=1.1.1"></script>
+  <script src="i18n.js?v=1.1.1"></script>
+  <script src="store.js?v=1.1.1"></script>
+  <script src="app.js?v=1.1.1"></script>
 </body>
 </html>

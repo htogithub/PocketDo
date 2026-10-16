@@ -3,7 +3,7 @@
   'use strict';
   var PT = window.PT, U = PT.util, S = PT.store;
   var t = function (k, v) { return PT.t(k, v); };
-  var VERSION = '1.1.0';
+  var VERSION = '1.1.1';
   var CFG = window.PT_CONFIG || {};
   var THEMES = window.PT_THEMES, THEME_ORDER = window.PT_THEME_ORDER;
   var ACCENTS = window.PT_ACCENTS, LIST_COLORS = window.PT_LIST_COLORS;
