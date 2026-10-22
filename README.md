@@ -15,6 +15,12 @@ PocketDo is a minimalist to-do list and daily habit tracker that runs in the bro
 - One page for everything due today: today's habits, overdue tasks and tasks dated today
 - A progress ring that fills as you check things off and turns into the PocketDo mark when the day is complete
 
+**Notes**
+- Free-text notes for quick lists and ideas, without checkboxes, in the spirit of Apple Notes
+- The first line is used as the title in the list, the rest as a preview
+- Saved automatically while typing and synced like everything else; empty notes are dropped
+- Swipe left in the list to delete a note (with undo)
+
 **Habits**
 - Daily checkboxes that reset at midnight
 - Each habit runs every day, on weekdays only, or on weekends only
@@ -25,7 +31,7 @@ PocketDo is a minimalist to-do list and daily habit tracker that runs in the bro
 - English and French interface, switchable in Settings
 - Twelve themes (Auto, Light, Dark, AMOLED, Glacier, Lavender, Rose, Matcha, Midnight, Forest, Ember, Mono) and a free accent colour
 - Haptic feedback on supported phones (Android, and iPhone with iOS 18 or later), can be turned off
-- Export of all your data as a JSON backup, and import of a backup
+- Export of all your data (tasks, habits and notes) as a JSON backup, and import of a backup
 - Bottom tab bar on phones, sidebar on larger screens, keyboard shortcut N to add a task on a computer
 - Optional local mode that keeps everything on one device without an account
 
@@ -112,7 +118,9 @@ When `config.js` is left empty, the sign-in screen offers to use PocketDo on the
 
 ## Updating the app
 
-Replace the changed files in the repository and commit. Data lives in Supabase, so updating the code never touches it. If the home-screen app still shows the previous version, close it completely and open it again.
+Replace the changed files in the repository and commit. Data lives in Supabase, so updating the code never touches it. If the home-screen app still shows the previous version, wait a few minutes, close it completely and open it again. The version number is shown at the bottom of Settings.
+
+When an update adds a table (version 1.2 added the notes table), run `supabase/schema.sql` again in the Supabase SQL Editor. The script only adds what is missing and never deletes data. Until then, the Notes page shows a reminder and the rest of the app keeps working.
 
 ## Notes
 

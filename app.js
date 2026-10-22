@@ -3,7 +3,7 @@
   'use strict';
   var PT = window.PT, U = PT.util, S = PT.store;
   var t = function (k, v) { return PT.t(k, v); };
-  var VERSION = '1.1.1';
+  var VERSION = '1.2.0';
   var CFG = window.PT_CONFIG || {};
   var THEMES = window.PT_THEMES, THEME_ORDER = window.PT_THEME_ORDER;
   var ACCENTS = window.PT_ACCENTS, LIST_COLORS = window.PT_LIST_COLORS;
@@ -53,6 +53,7 @@
     download: '<path d="M12 4v11M7 10.5l5 5 5-5M5 20h14"/>',
     upload: '<path d="M12 20V9M7 13.5l5-5 5 5M5 4h14"/>',
     logout: '<path d="M14.5 4H19v16h-4.5M10 8l-4 4 4 4M6 12h10"/>',
+    notes: '<path d="M6 3.5h8.4L18.5 7.6v12.9H6z"/><path d="M14 3.7v4.3h4.3M9 12h6M9 15.8h6"/>',
     more: '<circle cx="5.5" cy="12" r="1.6" class="f"/><circle cx="12" cy="12" r="1.6" class="f"/><circle cx="18.5" cy="12" r="1.6" class="f"/>'
   };
   function icon(name, cls) { return '<svg class="ic' + (cls ? ' ' + cls : '') + '" viewBox="0 0 24 24" aria-hidden="true">' + I[name] + '</svg>'; }
@@ -429,6 +430,121 @@
     box.innerHTML = html;
   }
 
+  /* Notes: free text, like a note in Apple Notes */
+  function fmtNoteDate(iso) {
+    if (!iso) return '';
+    var d = new Date(iso), day = U.dayStr(d), today = U.today();
+    var diff = U.diffDays(day, today);
+    if (diff === 0) return U.pad(d.getHours()) + ':' + U.pad(d.getMinutes());
+    if (diff === 1) return t('task.yesterday');
+    if (diff > 1 && diff < 7) return cap(new Intl.DateTimeFormat(locale(), { weekday: 'long' }).format(d));
+    var opts = { day: 'numeric', month: 'short' };
+    if (day.slice(0, 4) !== today.slice(0, 4)) opts.year = 'numeric';
+    return new Intl.DateTimeFormat(locale(), opts).format(d);
+  }
+  function noteRow(n) {
+    var lines = String(n.body || '').split('\n').map(function (x) { return x.trim(); }).filter(Boolean);
+    var title = lines[0] || t('notes.untitled');
+    var preview = lines.slice(1).join(' \u00B7 ') || t('notes.noText');
+    return '<div class="row nrow" data-id="' + n.id + '">' +
+      '<div class="swipe-bg"><span class="sb sb-done"></span><span class="sb sb-del">' + icon('trash') + '</span></div>' +
+      '<div class="row-inner" data-act="open-note">' +
+        '<div class="row-main"><div class="row-title nt">' + esc(title) + '</div>' +
+        '<div class="row-meta nmeta"><span class="nd">' + esc(fmtNoteDate(n.updated_at)) + '</span><span class="np">' + esc(preview) + '</span></div></div>' +
+        icon('chevR', 'chev') +
+      '</div></div>';
+  }
+  function deleteNoteWithUndo(id) {
+    var undo = S.deleteNote(id);
+    toast(t('notes.deleted'), { action: t('common.undo'), onAction: undo });
+  }
+  function newNote() {
+    if (S.notesMissing) { toast(t('notes.missing')); return; }
+    var n = S.addNote('');
+    UI.focusNote = true;
+    location.hash = '#/note/' + n.id;
+    onRoute(true);
+  }
+
+  Views.notes = {
+    mount: function (v) {
+      v.innerHTML =
+        '<header class="vhead"><div class="vhead-text"><h1>' + esc(t('notes.title')) + '</h1></div>' +
+        '<button type="button" class="icon-btn round" data-act="new-note" aria-label="' + esc(t('notes.new')) + '">' + icon('plus') + '</button></header>' +
+        '<p class="notice" data-r="missing" hidden></p>' +
+        '<div class="rows" data-r="rows"></div><p class="empty" data-r="empty"></p>';
+      attachSwipe(v, { rowSel: '.nrow', onRight: null, onLeft: deleteNoteWithUndo });
+      this.update(v);
+    },
+    update: function (v) {
+      var miss = R('missing', v);
+      miss.hidden = !S.notesMissing;
+      miss.textContent = t('notes.missing');
+      var ns = S.notesSorted();
+      R('rows', v).innerHTML = ns.map(noteRow).join('');
+      R('empty', v).textContent = ns.length || S.notesMissing ? '' : t('notes.empty');
+      R('empty', v).hidden = !!ns.length || S.notesMissing;
+    }
+  };
+
+  Views.note = {
+    mount: function (v, id) {
+      var self = this;
+      this.id = id;
+      this.timer = 0;
+      var n = S.notes.get(id);
+      if (!n) { go('notes'); return; }
+      v.innerHTML =
+        '<header class="vhead nhead">' +
+          '<button type="button" class="nback" data-act="go" data-to="notes">' + icon('chevL') + '<span>' + esc(t('notes.title')) + '</span></button>' +
+          '<div class="nhead-actions">' +
+            '<button type="button" class="icon-btn" data-act="delete-note" aria-label="' + esc(t('notes.delete')) + '">' + icon('trash') + '</button>' +
+            '<button type="button" class="btn sm primary" data-act="note-ok" data-r="ok" hidden>' + esc(t('common.done')) + '</button>' +
+          '</div></header>' +
+        '<p class="note-date" data-r="date"></p>' +
+        '<textarea class="note-body" data-r="body" placeholder="' + esc(t('notes.placeholder')) + '" spellcheck="true" autocapitalize="sentences"></textarea>';
+      UI.scroller.classList.add('note-scroller');
+      var ta = R('body', v), ok = R('ok', v);
+      this.ta = ta;
+      ta.value = n.body || '';
+      R('date', v).textContent = this.dateText(n);
+      ta.addEventListener('input', function () {
+        autoGrow(ta);
+        clearTimeout(self.timer);
+        self.timer = setTimeout(function () { self.save(); }, 450);
+        // keep the line being typed visible above the keyboard
+        if (ta.selectionEnd >= ta.value.length - 1) UI.scroller.scrollTop = UI.scroller.scrollHeight;
+      });
+      ta.addEventListener('focus', function () { ok.hidden = false; });
+      ta.addEventListener('blur', function () { ok.hidden = true; self.save(); });
+      requestAnimationFrame(function () { autoGrow(ta); });
+      if (UI.focusNote) {
+        UI.focusNote = false;
+        ta.focus({ preventScroll: true });
+      }
+    },
+    dateText: function (n) {
+      return new Intl.DateTimeFormat(locale(), { dateStyle: 'long', timeStyle: 'short' }).format(new Date(n.updated_at || n.created_at || Date.now()));
+    },
+    save: function () {
+      clearTimeout(this.timer);
+      if (!this.ta || !S.notes.has(this.id)) return;
+      S.updateNote(this.id, this.ta.value);
+    },
+    update: function (v) {
+      var n = S.notes.get(this.id);
+      if (!n) { go('notes'); return; }
+      R('date', v).textContent = this.dateText(n);
+      if (document.activeElement !== this.ta && this.ta.value !== n.body) { this.ta.value = n.body; autoGrow(this.ta); }
+    },
+    unmount: function () {
+      this.save();
+      var n = S.notes.get(this.id);
+      if (n && !String(n.body || '').trim()) S.deleteNote(this.id); // an empty note is simply dropped, like in Apple Notes
+      this.ta = null;
+    }
+  };
+
   Views.settings = {
     mount: function (v) {
       var local = UI.mode === 'local';
@@ -526,6 +642,7 @@
           '<div class="brand">' + logoSVG() + '<span>PocketDo</span><i class="sync-dot" data-state="idle"></i></div>' +
           '<nav class="side-nav">' +
             '<a href="#/today" data-nav="today">' + icon('today') + '<span>' + esc(t('nav.today')) + '</span><em class="cnt" data-count="today"></em></a>' +
+            '<a href="#/notes" data-nav="notes">' + icon('notes') + '<span>' + esc(t('nav.notes')) + '</span></a>' +
             '<a href="#/habits" data-nav="habits">' + icon('habits') + '<span>' + esc(t('nav.habits')) + '</span></a>' +
           '</nav>' +
           '<div class="side-head"><a href="#/lists" data-nav="lists">' + esc(t('nav.lists')) + '</a>' +
@@ -534,7 +651,7 @@
           '<nav class="side-foot"><a href="#/settings" data-nav="settings">' + icon('settings') + '<span>' + esc(t('nav.settings')) + '</span></a></nav>' +
         '</aside>' +
         '<main class="main"><div class="banner" data-r="banner" hidden></div><div class="view-host"></div></main>' +
-        '<nav class="tabbar">' + ['today', 'lists', 'habits', 'settings'].map(function (r) {
+        '<nav class="tabbar">' + ['today', 'lists', 'notes', 'habits', 'settings'].map(function (r) {
           return '<a href="#/' + r + '" data-nav="' + r + '">' + icon(r) + '<span>' + esc(t('nav.' + r)) + '</span></a>';
         }).join('') + '</nav>' +
       '</div>';
@@ -558,9 +675,10 @@
   }
 
   function updateNav() {
-    var navKey = UI.route === 'list' ? 'lists' : UI.route;
+    var navKey = UI.route === 'list' ? 'lists' : UI.route === 'note' ? 'notes' : UI.route;
+    var sideKey = UI.route === 'note' ? 'notes' : UI.route;
     Array.prototype.forEach.call(document.querySelectorAll('.tabbar [data-nav]'), function (a) { a.classList.toggle('active', a.dataset.nav === navKey); });
-    Array.prototype.forEach.call(document.querySelectorAll('.sidebar [data-nav]'), function (a) { a.classList.toggle('active', a.dataset.nav === UI.route); });
+    Array.prototype.forEach.call(document.querySelectorAll('.sidebar [data-nav]'), function (a) { a.classList.toggle('active', a.dataset.nav === sideKey); });
     var dot = $('.brand .sync-dot');
     if (dot) { dot.dataset.state = S.sync; dot.title = t('sync.' + S.sync); }
   }
@@ -578,7 +696,7 @@
     if (!h || /access_token|error=|type=/.test(h)) return { route: 'today', param: null };
     var parts = h.split('/');
     var r = parts[0];
-    if (['today', 'lists', 'list', 'habits', 'settings'].indexOf(r) < 0) return { route: 'today', param: null };
+    if (['today', 'lists', 'list', 'notes', 'note', 'habits', 'settings'].indexOf(r) < 0) return { route: 'today', param: null };
     return { route: r, param: parts[1] ? decodeURIComponent(parts[1]) : null };
   }
   function go(path) {
@@ -596,6 +714,7 @@
   function mountView() {
     var host = $('.view-host');
     if (!host) return;
+    if (UI.view && UI.view.unmount) { try { UI.view.unmount(); } catch (e) { console.error(e); } }
     host.innerHTML = '';
     var scroller = el('<div class="view"><div class="vin"></div></div>');
     host.appendChild(scroller);
@@ -686,6 +805,16 @@
       case 'new-list': openListSheet(null); break;
       case 'edit-list': openListSheet(a.dataset.id); break;
       case 'new-habit': openHabitSheet(null); break;
+      case 'new-note': newNote(); break;
+      case 'open-note': go('note/' + id); break;
+      case 'delete-note': {
+        var nid = Views.note.id;
+        Views.note.ta = null;
+        go('notes');
+        if (S.notes.has(nid)) deleteNoteWithUndo(nid);
+        break;
+      }
+      case 'note-ok': if (document.activeElement) document.activeElement.blur(); break;
       case 'toggle-done': UI.showDone[a.dataset.key] = !UI.showDone[a.dataset.key]; renderNow(); break;
       case 'pick-add-list': openMenu(a, listItems(UI.todayList), function (v) { UI.todayList = v; renderNow(); }); break;
       case 'theme': S.setSettings({ theme: a.dataset.v }); haptic(); break;
@@ -721,10 +850,14 @@
   /* ------------------------------------------------------------------ */
   /* Gestures: swipe to complete / delete                                */
   /* ------------------------------------------------------------------ */
-  function attachSwipe(container) {
+  function attachSwipe(container, opt) {
+    opt = opt || {};
+    var rowSel = opt.rowSel || '.task';
+    var onRight = 'onRight' in opt ? opt.onRight : function (row) { onTaskCheck(row.dataset.id, row); };
+    var onLeft = opt.onLeft || deleteTaskWithUndo;
     container.addEventListener('pointerdown', function (e) {
       if (e.pointerType === 'mouse' && e.button !== 0) return;
-      var row = e.target.closest('.task');
+      var row = e.target.closest(rowSel);
       if (!row || !container.contains(row) || row.classList.contains('leaving')) return;
       if (e.target.closest('.grip, .check, input, textarea, button.link')) return;
       var inner = row.querySelector('.row-inner');
@@ -734,6 +867,7 @@
       function move(ev) {
         if (ev.pointerId !== pid) return;
         var mx = ev.clientX - sx, my = ev.clientY - sy;
+        if (!onRight && mx > 0) mx = 0;
         if (!mode) {
           if (Math.abs(mx) > 8 && Math.abs(mx) > Math.abs(my) * 1.3) {
             mode = 'swipe'; holdOn(); row.classList.add('swiping');
@@ -767,7 +901,7 @@
           inner.style.transform = 'translateX(' + (-W) + 'px)';
           setTimeout(function () {
             collapse(row);
-            setTimeout(function () { release(); deleteTaskWithUndo(row.dataset.id); }, 200);
+            setTimeout(function () { release(); onLeft(row.dataset.id); }, 200);
           }, 180);
           return;
         }
@@ -776,7 +910,7 @@
           inner.style.transition = '';
           row.classList.remove('swiping', 'sw-left', 'sw-right', 'armed');
           release();
-          if (armed && dx > 0) onTaskCheck(row.dataset.id, row);
+          if (armed && dx > 0 && onRight) onRight(row);
         }, 220);
       }
       window.addEventListener('pointermove', move, { passive: false });
@@ -1548,6 +1682,7 @@
     S.reset();
     UI.started = false;
     UI.route = null;
+    if (UI.view && UI.view.unmount) { try { UI.view.unmount(); } catch (e) { /* ignore */ } }
     UI.view = null;
     UI.viewEl = null;
   }
@@ -1596,13 +1731,13 @@
   /* App lifecycle */
   document.addEventListener('visibilitychange', function () {
     if (!UI.started) return;
-    if (document.visibilityState === 'hidden') { S.flush(); return; }
+    if (document.visibilityState === 'hidden') { if (UI.route === 'note') Views.note.save(); S.flush(); return; }
     if (UI.day !== U.today()) { UI.day = U.today(); renderNow(); }
     if (UI.mode === 'cloud' && Date.now() - S.lastSync > 15000) S.resync();
   });
   window.addEventListener('online', function () { updateBanner(); if (UI.started && UI.mode === 'cloud') { S.flush(); S.resync(); } });
   window.addEventListener('offline', updateBanner);
-  window.addEventListener('pagehide', function () { if (UI.started) S.flush(); });
+  window.addEventListener('pagehide', function () { if (UI.started) { if (UI.route === 'note') Views.note.save(); S.flush(); } });
   setInterval(function () { if (UI.started && UI.day !== U.today()) { UI.day = U.today(); renderNow(); } }, 30000);
   window.addEventListener('hashchange', function () { onRoute(false); });
 

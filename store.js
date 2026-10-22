@@ -90,7 +90,7 @@
   /* ------------------------------------------------------------------ */
   /* Store                                                               */
   /* ------------------------------------------------------------------ */
-  var TABLES = ['lists', 'tasks', 'habits', 'habit_logs'];
+  var TABLES = ['lists', 'tasks', 'habits', 'habit_logs', 'notes'];
   var EMPTY = new Set();
   function keyOf(table, row) {
     if (!row) return null;
@@ -110,11 +110,13 @@
       o.list_id = o.list_id || null;
     }
     if (table === 'habit_logs') o.done = o.done !== false;
+    if (table === 'notes') o.body = o.body == null ? '' : String(o.body);
     return o;
   }
 
   var S = (PT.store = {
-    lists: new Map(), tasks: new Map(), habits: new Map(), habit_logs: new Map(),
+    lists: new Map(), tasks: new Map(), habits: new Map(), habit_logs: new Map(), notes: new Map(),
+    notesMissing: false,
     settings: {}, settingsAt: 0, hasSettings: false,
     backend: null, uid: null, email: '',
     queue: new Map(), inflight: new Set(), tombs: new Map(),
@@ -133,7 +135,8 @@
 
     reset: function () {
       clearTimeout(this.flushTimer);
-      this.lists = new Map(); this.tasks = new Map(); this.habits = new Map(); this.habit_logs = new Map();
+      this.lists = new Map(); this.tasks = new Map(); this.habits = new Map(); this.habit_logs = new Map(); this.notes = new Map();
+      this.notesMissing = false;
       this.queue = new Map(); this.inflight = new Set(); this.tombs = new Map();
       this.flushing = false; this.retryDelay = 0; this.hasSettings = false; this.settingsAt = 0;
       this.backend = null; this.uid = null; this.email = '';
@@ -155,6 +158,7 @@
         }
         self[table] = map;
       });
+      if ('notesMissing' in data) this.notesMissing = !!data.notesMissing;
       if (data.settings && !(merge && this.isPending('settings', 'settings'))) {
         this.settings = Object.assign(PT.defaultSettings(), data.settings.data || {});
         this.settingsAt = U.time(data.settings.updated_at);
@@ -210,13 +214,13 @@
       if (this.sync !== 'offline') this.setSync('saving');
       var failed = null;
       try {
-        var upOrder = ['lists', 'habits', 'tasks', 'habit_logs', 'settings'];
+        var upOrder = ['lists', 'habits', 'tasks', 'habit_logs', 'notes', 'settings'];
         for (var i = 0; i < upOrder.length; i++) {
           var tb = upOrder[i];
           var rows = ops.filter(function (o) { return o.table === tb && o.op === 'upsert'; }).map(function (o) { return o.row; });
           if (rows.length) await this.backend.upsert(tb, rows);
         }
-        var delOrder = ['tasks', 'lists', 'habits'];
+        var delOrder = ['tasks', 'lists', 'habits', 'notes'];
         for (var j = 0; j < delOrder.length; j++) {
           var td = delOrder[j];
           var keys = ops.filter(function (o) { return o.table === td && o.op === 'delete'; }).map(function (o) { return o.key; });
@@ -466,6 +470,31 @@
       return best;
     },
 
+    /* ---------- notes ---------- */
+    notesSorted: function () {
+      return Array.from(this.notes.values()).sort(function (a, b) { return U.time(b.updated_at) - U.time(a.updated_at); });
+    },
+    addNote: function (body) {
+      var row = { id: U.uuid(), body: body || '', created_at: U.nowIso() };
+      this.put('notes', row);
+      return row;
+    },
+    updateNote: function (id, body) {
+      var o = this.notes.get(id);
+      if (!o || o.body === body) return;
+      this.put('notes', Object.assign({}, o, { body: body }));
+    },
+    deleteNote: function (id) {
+      var o = this.notes.get(id);
+      if (!o) return function () {};
+      var self = this;
+      this.notes.delete(id);
+      this.tombs.set(id, Date.now());
+      this.enqueue('notes', 'delete', id);
+      this.changed();
+      return function () { self.put('notes', Object.assign({}, o)); };
+    },
+
     /* ---------- settings ---------- */
     setSettings: function (patch) {
       this.settings = Object.assign({}, this.settings, patch);
@@ -479,11 +508,12 @@
     /* ---------- export / import ---------- */
     exportData: function () {
       return {
-        app: 'PocketDo', schema: 1, exported_at: U.nowIso(),
+        app: 'PocketDo', schema: 2, exported_at: U.nowIso(),
         lists: this.listsSorted(),
         tasks: Array.from(this.tasks.values()),
         habits: this.habitsSorted(),
         habit_logs: Array.from(this.habit_logs.values()).filter(function (l) { return l.done; }),
+        notes: this.notesSorted(),
         settings: this.settings
       };
     },
@@ -517,13 +547,17 @@
         if (seen.has(k)) return false;
         seen.add(k); return true;
       }).map(function (l) { return { habit_id: hmap.get(l.habit_id), day: l.day, done: true, updated_at: now }; });
+      var notes = (Array.isArray(j.notes) ? j.notes : []).filter(function (n) { return n && typeof n.body === 'string'; }).map(function (n) {
+        return { id: U.uuid(), body: n.body, created_at: n.created_at || now, updated_at: n.updated_at || now };
+      });
+      if (this.notesMissing) notes = [];
       var settings = j.settings && typeof j.settings === 'object'
         ? { data: Object.assign(PT.defaultSettings(), j.settings), updated_at: now } : null;
 
       await this.flushNow();
       this.importing = true;
       try {
-        await this.backend.replaceAll({ lists: lists, tasks: tasks, habits: habits, habit_logs: logs, settings: settings });
+        await this.backend.replaceAll({ lists: lists, tasks: tasks, habits: habits, habit_logs: logs, notes: notes, settings: settings }, this.notesMissing);
         var d = await this.backend.loadAll();
         this.queue.clear();
         this.importing = false;
@@ -582,13 +616,18 @@
     },
     loadAll: async function () {
       var self = this;
+      var notesP = this.fetchAll('notes').then(function (rows) { return { rows: rows, missing: false }; }, function (e) {
+        if (U.isNetErr(e)) throw e;
+        console.warn('PocketDo: notes table not available, run the updated supabase/schema.sql', e);
+        return { rows: [], missing: true };
+      });
       var res = await Promise.all([
         this.fetchAll('lists'), this.fetchAll('tasks'), this.fetchAll('habits'), this.fetchAll('habit_logs'),
-        this.sb.from('settings').select('*').maybeSingle()
+        this.sb.from('settings').select('*').maybeSingle(), notesP
       ]);
       if (res[4].error) throw res[4].error;
-      void self;
-      return { lists: res[0], tasks: res[1], habits: res[2], habit_logs: res[3], settings: res[4].data };
+      self.notesMissing = res[5].missing;
+      return { lists: res[0], tasks: res[1], habits: res[2], habit_logs: res[3], settings: res[4].data, notes: res[5].rows, notesMissing: res[5].missing };
     },
     upsert: async function (table, rows) {
       var uid = this.uid;
@@ -601,7 +640,7 @@
       var r = await this.sb.from(table).delete().in('id', ids);
       if (r.error) throw r.error;
     },
-    replaceAll: async function (d) {
+    replaceAll: async function (d, skipNotes) {
       var self = this;
       async function wipe(t, col) {
         var r = await self.sb.from(t).delete().not(col, 'is', null);
@@ -611,7 +650,8 @@
       await wipe('tasks', 'id');
       await wipe('habits', 'id');
       await wipe('lists', 'id');
-      var order = ['lists', 'tasks', 'habits', 'habit_logs'];
+      if (!skipNotes) await wipe('notes', 'id');
+      var order = skipNotes ? ['lists', 'tasks', 'habits', 'habit_logs'] : ['lists', 'tasks', 'habits', 'habit_logs', 'notes'];
       for (var i = 0; i < order.length; i++) {
         var parts = chunks(d[order[i]] || [], 400);
         for (var j = 0; j < parts.length; j++) await this.upsert(order[i], parts[j]);
@@ -621,7 +661,9 @@
     subscribe: function (onChange, onStatus) {
       this.unsubscribe();
       var ch = this.sb.channel('pocketdo-' + this.uid);
-      ['lists', 'tasks', 'habits', 'habit_logs', 'settings'].forEach(function (table) {
+      var tables = ['lists', 'tasks', 'habits', 'habit_logs', 'settings'];
+      if (!this.notesMissing) tables.push('notes');
+      tables.forEach(function (table) {
         ch.on('postgres_changes', { event: '*', schema: 'public', table: table }, function (p) {
           onChange(table, p.eventType, p.new && Object.keys(p.new).length ? p.new : null, p.old);
         });
@@ -644,7 +686,7 @@
     try { db = JSON.parse(localStorage.getItem(LKEY) || 'null'); } catch (e) { db = null; }
     this.db = db && typeof db === 'object' ? db : {};
     var self = this;
-    ['lists', 'tasks', 'habits', 'habit_logs'].forEach(function (t) { if (!Array.isArray(self.db[t])) self.db[t] = []; });
+    ['lists', 'tasks', 'habits', 'habit_logs', 'notes'].forEach(function (t) { if (!Array.isArray(self.db[t])) self.db[t] = []; });
     if (!('settings' in this.db)) this.db.settings = null;
   }
   LocalBackend.prototype = {
@@ -669,7 +711,7 @@
       this.save();
     },
     replaceAll: async function (d) {
-      this.db = { lists: d.lists || [], tasks: d.tasks || [], habits: d.habits || [], habit_logs: d.habit_logs || [], settings: d.settings || null };
+      this.db = { lists: d.lists || [], tasks: d.tasks || [], habits: d.habits || [], habit_logs: d.habit_logs || [], notes: d.notes || [], settings: d.settings || null };
       this.save();
     },
     subscribe: function () {},

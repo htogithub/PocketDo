@@ -99,7 +99,7 @@ body.is-dragging, body.is-dragging * { cursor: grabbing !important; }
 
 /* tab bar (phone) */
 .tabbar {
-  display: grid; grid-template-columns: repeat(4, 1fr);
+  display: grid; grid-template-columns: repeat(5, 1fr);
   padding: 0 6px env(safe-area-inset-bottom);
   background: color-mix(in srgb, var(--bg) 86%, transparent);
   -webkit-backdrop-filter: saturate(1.6) blur(18px);
@@ -110,7 +110,8 @@ body.is-dragging, body.is-dragging * { cursor: grabbing !important; }
 .tabbar a {
   display: flex; flex-direction: column; align-items: center; gap: 2px;
   padding: 8px 0 6px;
-  font-size: 11px; font-weight: 550; letter-spacing: .01em;
+  font-size: 11px; font-weight: 550; letter-spacing: .01em; font-stretch: 94%;
+  white-space: nowrap; overflow: hidden;
   color: var(--text-3); text-decoration: none;
 }
 .tabbar a .ic { width: 25px; height: 25px; }
@@ -323,6 +324,40 @@ body.is-dragging, body.is-dragging * { cursor: grabbing !important; }
 .chev { width: 18px; height: 18px; color: var(--text-3); }
 .lists-rows { margin-top: 6px; border-top: 1px solid var(--line); }
 .lists-rows:empty { border-top: 0; }
+
+/* ------------------------------------------------------------ notes */
+.notice {
+  margin: 0 0 14px; padding: 12px 14px; border-radius: 14px;
+  font-size: 14px; line-height: 1.45;
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg)); color: var(--text);
+}
+.nrow > .row-inner { touch-action: pan-y; min-height: 64px; padding: 12px 0; gap: 10px; }
+.nrow + .nrow > .row-inner::before { left: 0; }
+.nt { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nmeta { flex-wrap: nowrap; gap: 9px; margin-top: 3px; font-size: 14px; }
+.nmeta .nd { flex: none; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.nmeta .np { min-width: 0; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.nhead { align-items: center; margin: 2px 0 4px; }
+.nback {
+  display: inline-flex; align-items: center; gap: 1px;
+  height: 40px; margin-left: -8px; padding: 0 10px 0 0;
+  border: 0; background: none; color: var(--accent);
+  font-size: 17px; font-weight: 550;
+}
+.nback .ic { width: 26px; height: 26px; stroke-width: 2.2; }
+.nhead-actions { display: flex; align-items: center; gap: 4px; }
+.nhead-actions .icon-btn { color: var(--accent); }
+.btn.sm { padding: 7px 15px; font-size: 15px; border-radius: 11px; }
+.note-date { margin: 0 0 14px; text-align: center; font-size: 13px; color: var(--text-3); }
+.note-body {
+  display: block; width: 100%; min-height: 60vh;
+  margin: 0; padding: 0; border: 0; resize: none; overflow: hidden;
+  background: transparent; color: var(--text); caret-color: var(--accent);
+  font: inherit; font-size: 17px; line-height: 1.6;
+}
+.note-body::placeholder { color: var(--text-3); }
+.view.note-scroller { padding-bottom: calc(48px + var(--kb, 0px)); }
 
 /* ------------------------------------------------------------ habits heatmap */
 .heat-card { margin: 4px 0 18px; padding: 16px 16px 18px; border-radius: 18px; background: var(--surface); }

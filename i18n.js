@@ -9,6 +9,13 @@
       'tagline': 'Your tasks and daily habits, in sync on every device.',
       'nav.today': 'Today', 'nav.lists': 'Lists', 'nav.habits': 'Habits', 'nav.settings': 'Settings',
 
+      'nav.notes': 'Notes',
+      'notes.title': 'Notes', 'notes.new': 'New note', 'notes.delete': 'Delete note',
+      'notes.untitled': 'New note', 'notes.noText': 'No additional text', 'notes.placeholder': 'Start writing\u2026',
+      'notes.deleted': 'Note deleted',
+      'notes.empty': 'No notes yet. Tap + to write one: shopping lists, ideas, anything.',
+      'notes.missing': 'Notes need one more setup step: run the updated supabase/schema.sql in the Supabase SQL Editor, then reopen PocketDo.',
+
       'auth.email': 'Email', 'auth.password': 'Password',
       'auth.signIn': 'Sign in', 'auth.signUp': 'Create account',
       'auth.toSignUp': 'Create an account', 'auth.toSignIn': 'I already have an account',
@@ -97,6 +104,13 @@
     fr: {
       'tagline': 'Tes t\u00E2ches et tes habitudes, synchronis\u00E9es sur tous tes appareils.',
       'nav.today': 'Aujourd\u2019hui', 'nav.lists': 'Listes', 'nav.habits': 'Habitudes', 'nav.settings': 'R\u00E9glages',
+
+      'nav.notes': 'Notes',
+      'notes.title': 'Notes', 'notes.new': 'Nouvelle note', 'notes.delete': 'Supprimer la note',
+      'notes.untitled': 'Nouvelle note', 'notes.noText': 'Aucun texte suppl\u00E9mentaire', 'notes.placeholder': 'Commence \u00E0 \u00E9crire\u2026',
+      'notes.deleted': 'Note supprim\u00E9e',
+      'notes.empty': 'Aucune note pour l\u2019instant. Touche + pour en \u00E9crire une\u00A0: courses, id\u00E9es, tout ce que tu veux.',
+      'notes.missing': 'Les notes demandent une \u00E9tape de plus\u00A0: ex\u00E9cute le nouveau supabase/schema.sql dans le SQL Editor de Supabase, puis rouvre PocketDo.',
 
       'auth.email': 'E-mail', 'auth.password': 'Mot de passe',
       'auth.signIn': 'Se connecter', 'auth.signUp': 'Cr\u00E9er le compte',
